@@ -1,3 +1,4 @@
+from datetime import datetime
 import struct
 from typing import override
 
@@ -14,17 +15,14 @@ class SymbolBar(BaseParser):
 
     @override
     def deserialize(self, data):
-        row_length = 36
-        market, symbol, period, unknow, count, start = struct.unpack("<H12s10xBHHI", data[:33])
-        #  4a 00 54 53 4c 41 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 03 00 01 0f 00 00 00 00 00
-
-        bars = []
-        # print(f"总行数 {row_count}")
+        market, symbol, period, unknown, count, start = struct.unpack_from("<H12s10xBHHI", data)
+        
+        charts = []
         for i in range(count):
-            ymd, time_num, open, high, low, close, amount, vol, float_shares = struct.unpack("<II7f", data[33 + i * row_length : 33 + (i + 1) * row_length])
+            ymd, time_num, open, high, low, close, amount, vol, float_shares = struct.unpack_from("<II7f", data, 33 + i * 36)
 
             # 如果是美股或者期货, time_num是中国时间, 但ymd是美国日期. 例如 2026-03-26 22:30:00 的k线, TDX数据返回的是 2026-03-25 22:30:00 
-            bars.append({
+            charts.append({
                 "datetime": combine_to_datetime(ymd, time_num, period < 4 or period == 7 or period == 8),
                 "open": open,
                 "high": high,
@@ -35,11 +33,29 @@ class SymbolBar(BaseParser):
                 "float_shares": float_shares,  # 流通股
             })
 
+        name, decimal, category, vol_unit, date_raw, time_raw, pre_close, open, high, low, close, momentum, vol, amount, turnover, avg, industry = struct.unpack_from("<44sBHf5x2I5ffIf12x2fI", data, 33 + count * 36)
+
         return {
             "market": MARKET(market) if not self.is_ex else EX_MARKET(market),
             "code": symbol.decode("gbk").rstrip('\x00'),
+            "name": name.decode("gbk").rstrip('\x00'),
+            "decimal": decimal,
+            "category": category,
+            "vol_unit": vol_unit,
+            "time": datetime(date_raw // 10000, (date_raw % 10000) // 100, date_raw % 100, time_raw // 10000, (time_raw % 10000) // 100, time_raw % 100),
+            "pre_close": pre_close,
+            "open": open,
+            "high": high,
+            "low": low,
+            "close": close,
+            "momentum": momentum,
+            "vol": vol,
+            "amount": amount,
+            "turnover": turnover,
+            "avg": avg,
+            "industry": industry,
             "period": PERIOD(period),
             "count": count,
             "start": start,
-            "bars": bars
+            "charts": charts
         }

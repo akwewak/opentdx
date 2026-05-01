@@ -1,4 +1,4 @@
-from datetime import date, time
+from datetime import date, datetime, time
 import struct
 from opentdx.const import MARKET, EX_MARKET
 from opentdx.parser.baseParser import BaseParser, register_parser
@@ -13,11 +13,6 @@ class TickCharts(BaseParser):
 
     def deserialize(self, data):
         market, code = struct.unpack_from('<H22s', data, 0)
-
-        try:
-            market = MARKET(market) if not self.is_ex else EX_MARKET(market)
-        except Exception:
-            pass
 
         pre_closes = struct.unpack_from('<5I5f', data, 24)
                 #透传最后那个值，没看出意义来
@@ -42,12 +37,26 @@ class TickCharts(BaseParser):
                 'ticks': ticks
             })
 
-        # c6bdb0b2d2f8d0d00000000000000000000000000000000000000000000000000000000000000000000000000200000000c8420000000000
-        # 4e263501 e956 0200 ec513841 00003841 9a993941 295c3741 0ad73741 0000000029621100 53809c4e 000000000000000000000000194a163f 12613841 094c0100
-        print(data[71 + count * page_size * 14:].hex())
+        name, decimal, category, vol_unit, date_raw, time_raw, pre_close, open, high, low, close, momentum, vol, amount, turnover, avg, industry = struct.unpack_from("<44sBHf5x2I5ffIf12x2fI", data, 71 + count * page_size * 14)
 
         return {
-            'market': market,
+            'market': MARKET(market) if not self.is_ex else EX_MARKET(market),
             'code': code.decode('gbk').rstrip('\x00'),
+            'name': name.decode('gbk').rstrip('\x00'),
+            'decimal': decimal,
+            'category': category,
+            'vol_unit': vol_unit,
+            'time': datetime(date_raw // 10000, (date_raw % 10000) // 100, date_raw % 100, time_raw // 10000, (time_raw % 10000) // 100, time_raw % 100),
+            'pre_close': pre_close,
+            'open': open,
+            'high': high,
+            'low': low,
+            'close': close,
+            'momentum': momentum,
+            'vol': vol,
+            'amount': amount,
+            'turnover': turnover,
+            'avg': avg,
+            'industry': industry,
             'charts': charts
         }

@@ -4,22 +4,20 @@ import struct
 from opentdx.const import EX_MARKET, MARKET
 from opentdx.parser.baseParser import BaseParser, register_parser
 from opentdx.utils.help import industry_to_board_symbol
-
-
 @register_parser(0x122D, 1)
 class SymbolTickChart(BaseParser):
-
     def __init__(self, market: MARKET | EX_MARKET, code: str, query_date: date = None):
+        self.is_ex = isinstance(market, EX_MARKET)
         ymd = query_date.year * 10000 + query_date.month * 100 + query_date.day if query_date else 0
         self.body = struct.pack("<H22sI5H", market.value, code.encode("gbk"), ymd, 1, 0, 0, 0, 0)
 
     def deserialize(self, data):
         market, code, date_raw, u, price, count = struct.unpack("<H22sIBfH", data[:35])
 
-        chart_data = []
+        charts = []
         for i in range(count):
             minutes, price, avg, vol, momentum = struct.unpack("<HffIf", data[35 + i * 18: 35 + (i + 1) * 18])
-            chart_data.append({
+            charts.append({
                 'time': time(minutes // 60 % 24, minutes % 60),
                 "price": price,
                 "avg": avg,
@@ -27,10 +25,10 @@ class SymbolTickChart(BaseParser):
                 "momentum": momentum
             })
 
-        name, decimal, category, vol_unit, date_raw, time_raw, pre_close, open, high, low, close, momentum, vol, amount, turnover, avg, industry = struct.unpack("<44sBHf5x2I5ffIf12x2fI", data[35 + count * 18:])
+        name, decimal, category, vol_unit, date_raw, time_raw, pre_close, open, high, low, close, momentum, vol, amount, turnover, avg, industry = struct.unpack_from("<44sBHf5x2I5ffIf12x2fI", data, 35 + count * 18)
 
         return {
-            "market": market,
+            "market": MARKET(market) if not self.is_ex else EX_MARKET(market),
             "code": code.decode("gbk").replace('\x00', ''),
             "name": name.decode("gbk").replace('\x00', ''),
             "decimal": decimal,
@@ -49,5 +47,5 @@ class SymbolTickChart(BaseParser):
             "avg": avg,
             "industry": industry,
             "industry_code": industry_to_board_symbol(industry),
-            "chart_data": chart_data
+            "charts": charts
         }
