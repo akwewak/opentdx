@@ -255,6 +255,28 @@ def g_quote(codes, json_fmt):
         _output(result, json_fmt)
 
 
+@cli.command(name='goods-list')
+@click.argument('market', type=int)
+@click.option('--count', default=20, type=int, help='数量')
+@click.option('--json', 'json_fmt', is_flag=True, default=False, help='JSON 输出')
+def goods_list(market, count, json_fmt):
+    """扩展市场商品列表（期货合约等）
+
+    opentdx goods-list 1 --count 10       (上期所)
+    opentdx goods-list 30 --count 5       (橡胶)
+    """
+    from opentdx.parser.mac_quotation.GoodsList import GoodsList
+    from opentdx.client import ExtendedClient
+
+    client = ExtendedClient()
+    client.connect().login()
+    try:
+        result = client.call(GoodsList(market=market, count=count))
+        _output(result, json_fmt)
+    finally:
+        client.disconnect()
+
+
 # ==================== MAC 协议 ====================
 
 @cli.command()
