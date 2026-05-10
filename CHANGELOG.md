@@ -1,20 +1,137 @@
 # Changelog
 
+所有值得关注的变化均记录于此。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
+
+## [0.2.3] - 2026-05-10
+
+### Added
+
+- **TdxClient 新接口**：`stock_board_list` / `stock_board_members` / `stock_board_top_members` 板块查询，`stock_belong_board` 个股所属板块，`stock_capital_flow` 资金流向，`stock_quotes_fields` 自定义字段行情，`stock_market_monitor` 主力监控增强版，`stock_tick_charts` 多日分时，`stock_kline_offset` K线偏移查询，`stock_symbol_info` 个股简要特征，`server_info` 交易日时段，`download_file` MAC文件下载，`goods_varieties` 扩展市场品种列表
+- **MAC 协议解析器**：`GoodsList` (0x2562) 扩展市场品种列表，`ServerInfo` (0x120F) 交易日时段，`KlineOffset` (0x124A) K线偏移，`SymbolInfo` (0x122A) 个股特征，`Auction` (0x123D) MAC竞价，`TickCharts` (0x123E) 多日分时，`FileList` (0x1215) / `FileDownload` (0x1217) MAC文件下载
+- **文档**：[TdxClient 使用指南](doc/tdxclient_guide.md)、[高级开发指南](doc/advanced_client_guide.md)
+
+### Changed
+
+- README 全面更新：修复过时 API 引用，补充完整 Python 示例，添加文档索引
+- CHANGELOG 补全 0.2.1 以来的所有改动
+
+### Fixed
+
+- 用户文档中的代码示例经真实运行验证，修复 8 处误导性错误（缺少 import、关键字参数错误、错误 API 用法等）
+
+---
+
+## [0.2.2] - 2026-05-05
+
+### Added
+
+- **新协议**：竞价 (`Auction` 0x123D)、多日分时 (`TickCharts` 0x123E)、文件下载 (`FileList` 0x1215 / `FileDownload` 0x1217)、个股特征 (`SymbolInfo` 0x122A)
+- **MAC 扩展市场**：`GoodsList` (0x2562) 期货/期权品种列表
+- **CLI 命令接口**：新增 `opentdx mm` 主力监控、扩展 `opentdx board` 支持港股美股
+
+### Changed
+
+- **Client 重构**：四层 Client 架构确立 — `StandardClient` → `MacStandardClient`(+MacMixin)，`ExtendedClient` → `MacExtendedClient`(+MacMixin)
+- **CLI 重构**：命令模块从 `doc.py` 重命名为 `commands/doc_demo.py`，新增 `commands/market_monitor.py`
+- **Bitmap 重构**：`FieldBit` 自带 fmt/desc，`PresetField` 新增 `BOARD_STATS`，新增 15+ 字段映射 (`up_count`/`down_count`/`vol_speed_pct` 等)
+- **主力监控增强**：补充 v1~v4 字段，支持异常处理逻辑
+
+### Fixed
+
+- `SymbolBar` 底层返回 dict，中间层同步修改
+- 变量名修正：`symbol` → `code`，`bars` → `charts`
+- `count_board_members` 多余 `filter` 参数报错修复
+- `@register_parser(0x122B, 1)` 必须 `head=1` 才支持扩展市场
+- 单位问题：金额字段统一为元
+- 分页查询 / 返回 list 格式修正
+
+---
+
 ## [0.2.1] - 2026-04-30
 
 ### Added
 
-- 新增 bitmap 字段: `limit_up_count`/`limit_down_count` (涨停/跌停数), `up_count`/`down_count` (上涨/下跌家数), `vol_speed_pct` (量涨速%), `short_turnover_pct` (短换手%), `circulating_capital_z` (流通股本Z), `avg_price_copy` (均价备份), `annual_limit_up_days` (年涨停天数), `industry_sub` (行业二级分类), `auction_vol_ratio` (竞价量比), `constant_neg_one` (恒值-1)
-- 新增预设: `PresetField.BOARD_STATS` (涨停/跌停/上涨/下跌家数)
-- 新增命令 `opentdx mm` 支持主力监控查询, --search 指定
+- 新增 bitmap 字段：`limit_up_count`/`limit_down_count` (涨跌停数), `up_count`/`down_count` (上涨/下跌家数), `vol_speed_pct` (量涨速%), `short_turnover_pct` (短换手%), `auction_vol_ratio` (竞价量比) 等
+- 新增预设 `PresetField.BOARD_STATS`
+- 新增命令 `opentdx mm` 主力监控查询
 
 ### Changed
 
-- 澄清金额字段单位: amount/open_amount/amount_2m 返回**元**, TDX客户端显示为万元(需÷10000); total_market_cap_ab 返回元, CSV显示为亿元(需÷1亿)
+- 金额字段单位说明：`amount`/`open_amount`/`amount_2m` 返回**元**
+
+---
 
 ## [0.2.0] - 2026-04-29
 
 ### Added
 
-- 增加命令 `opentdx mm`  支持主力监控查询, --search 指定
+- 统一 K 线接口 `get_symbol_bars`，A 股/港股/美股通用
+- 板块查询：`get_board_list` / `get_board_members_quotes` / `count_board_members`
+- 资金流向：`get_symbol_zjlx`，日/5 日维度
+- 主力监控：`get_market_monitor`，支持 v1~v4 字段
+- 统一报价：`get_symbol_quotes`，支持 `FieldBit` 动态字段
+- 逐笔成交：`get_symbol_transactions`，支持实时/历史
+- 分时图：`get_symbol_tick_chart`，支持实时/历史
+- 行业枚举类，5 位行业代码转 `board_symbol`
+- `top_board_members` 活跃度排序
+- `EX_BOARD_TYPE` 港股/美股板块类型
+- `SORT_TYPE` 扩展 60+ 排序字段
 
+### Changed
+
+- `MacQuotationMixin` 混入模式，避免同时维护两份代码
+- 板块查询默认 `count` 增加到 100000
+
+---
+
+## [0.1.2] - 2026-04-18
+
+### Added
+
+- 命令行 `opentdx doc` 交互式接口文档
+- `BLOCK_FILE_TYPE` 板块文件下载
+- `StandardClient` / `ExtendedClient` 标准化接口
+- `TdxClient` 统一入口封装
+- 类型注解支持
+
+### Changed
+
+- 项目重构为 `opentdx` 基础数据源库
+- parser 模块拆分（quotation / ex_quotation / mac_quotation）
+- 单元测试改为真实连通测试
+- `EX_CATEGORY` 重命名为 `EX_MARKET`
+
+---
+
+## [0.1.0] - 2026-04-10
+
+### Added
+
+- K 线复权支持（前复权/后复权/不复权）
+- 换手率自动计算（缓存流通股本）
+- 集合竞价协议
+- 板块列表协议
+- 行情加密解析器 `QuotesEncrypt`
+- 成交分布、分时图、历史分时图等协议
+- MCP 资源和指标计算工具
+
+### Changed
+
+- 项目结构重组，支持 pip 安装发布到 PyPI
+- 统一命名和编码风格
+
+### Fixed
+
+- 心跳线程不能正常结束
+- `get_kline()` 成交量单位（股 vs 手）
+- IPv6 支持
+
+---
+
+## [0.0.1] - 2026-03-28
+
+### Added
+
+- 初始版本，基于 `pytdx` 协议解析
+- A 股行情、K 线、分时、成交等基础协议
+- 扩展市场（港股/美股/期货）基础协议
