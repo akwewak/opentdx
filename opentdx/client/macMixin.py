@@ -8,9 +8,13 @@ from opentdx.const import (
     ADJUST, BOARD_TYPE, CATEGORY, EX_BOARD_TYPE, EX_CATEGORY,
     EX_MARKET, MARKET, PERIOD, SORT_TYPE, SORT_ORDER,
 )
+import math
+
 from opentdx.parser.mac_quotation import (
-    BoardList, BoardMembersQuotes, SymbolBar, SymbolBelongBoard,
-    SymbolCapitalFlow, SymbolTickChart, SymbolQuotes, SymbolTransaction, Unusual,
+    Auction, BoardList, BoardMembersQuotes, FileDownload, FileList,
+    GoodsList, KlineOffset, ServerInfo, SymbolBar, SymbolBelongBoard,
+    SymbolCapitalFlow, SymbolInfo, SymbolQuotes, SymbolTickChart,
+    SymbolTransaction, TickCharts, Unusual,
 )
 from opentdx.utils.log import log
 from opentdx.utils.bitmap import Fields, PresetField
@@ -206,3 +210,59 @@ class MacQuotationMixin:
             lambda s, c: self.call(Unusual(market, s, c)),
             600, count, start,
         )
+
+    @update_last_ack_time
+    def get_auction(self, market: MARKET, code: str, start: int = 0, count: int = 500) -> dict:
+        """MAC竞价数据 — 比旧版竞价协议字段更完整"""
+        return self.call(Auction(market, code, start, count))
+
+    @update_last_ack_time
+    def get_multi_tick_charts(
+        self, market: MARKET, code: str, query_date: date = None, days: int = 5,
+    ) -> dict:
+        """多日分时图 — 一次获取多天的分时数据"""
+        return self.call(TickCharts(market, code, query_date, days))
+
+    @update_last_ack_time
+    def get_symbol_info(self, market: MARKET, code: str) -> dict:
+        """获取个股简要特征（现价/涨跌/内外盘/换手等）"""
+        return self.call(SymbolInfo(market, code))
+
+    @update_last_ack_time
+    def get_kline_offset(self, offset: int = 0, count: int = 128000) -> dict:
+        """查询K线可用记录总数"""
+        return self.call(KlineOffset(offset, count))
+
+    @update_last_ack_time
+    def get_server_info(self) -> dict | None:
+        """获取服务器交易日时段、状态参数"""
+        return self.call(ServerInfo())
+
+    @update_last_ack_time
+    def get_goods_list(
+        self, market: int, start: int = 0, count: int = 600,
+    ) -> list[dict]:
+        """MAC扩展市场品种列表（期货/期权等合约信息）"""
+        return self.call(GoodsList(market, start, count))
+
+    def download_mac_file(self, filename: str, filesize: int = 0, report_hook=None) -> bytearray:
+        """MAC协议文件下载"""
+        meta = self.call(FileList(filename))
+        if not meta:
+            return bytearray()
+
+        size = filesize or meta['size']
+        file_content = bytearray()
+        one_chunk = 30000
+
+        for seg in range(math.ceil(size / one_chunk)):
+            start = seg * one_chunk
+            piece = self.call(FileDownload(filename, seg + 1, start, one_chunk))
+            if not piece:
+                break
+            raw = piece['content']
+            file_content.extend(raw.encode('gbk', errors='replace') if isinstance(raw, str) else raw)
+            if report_hook:
+                report_hook(len(file_content), size)
+
+        return file_content

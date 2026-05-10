@@ -34,9 +34,10 @@ from datetime import date
 from opentdx.client.macStandardClient import MacStandardClient
 from opentdx.client.macExtendedClient import MacExtendedClient
 from opentdx.const import (
-    ADJUST, BLOCK_FILE_TYPE, CATEGORY, EX_MARKET,
-    FILTER_TYPE, MARKET, PERIOD, SORT_TYPE,
+    ADJUST, BLOCK_FILE_TYPE, BOARD_TYPE, CATEGORY, EX_BOARD_TYPE, EX_MARKET,
+    FILTER_TYPE, MARKET, PERIOD, SORT_ORDER, SORT_TYPE,
 )
+from opentdx.utils.bitmap import Fields
 
 
 class TdxClient:
@@ -555,6 +556,234 @@ class TdxClient:
         return self.q_client().get_block_file(block_type)
 
     # ================================================================
+    #  A股 — 板块 / 资金流向 / 主力监控
+    # ================================================================
+
+    def stock_board_list(self, market: BOARD_TYPE | EX_BOARD_TYPE = BOARD_TYPE.ALL, count: int = 10000) -> list[dict]:
+        """获取板块列表。
+
+        Parameters
+        ----------
+        market : BOARD_TYPE
+            板块类型。 BOARD_TYPE.ALL / HY / HY2 / GN / FG / DQ / YJ_LEVEL1~3
+        count : int
+            获取数量，默认 10000。
+
+        Returns
+        -------
+        list[dict]
+            - ``board_symbol`` : str   板块代码
+            - ``name`` : str          板块名称
+            - ``market`` : int        市场
+            - ``total`` : int         成分股数量
+        """
+        return self.q_client().get_board_list(market, count)
+
+    def stock_board_members(
+        self,
+        board_symbol: str | CATEGORY = "881001",
+        count: int = 100000,
+        sort_type: SORT_TYPE = SORT_TYPE.CHANGE_PCT,
+        sort_order: SORT_ORDER = SORT_ORDER.DESC,
+        fields: Fields | None = None,
+    ) -> list[dict]:
+        """获取板块成分报价（支持自定义字段和排序）。
+
+        Parameters
+        ----------
+        board_symbol : str | CATEGORY
+            板块代码，如 ``"881001"`` 或 ``CATEGORY.A``。
+        count : int
+            获取数量。
+        sort_type : SORT_TYPE
+            排序字段。
+        sort_order : SORT_ORDER
+            排序方向。
+        fields : Fields, optional
+            自定义返回字段，默认使用 PresetField.COMMON。
+
+        Returns
+        -------
+        list[dict]
+        """
+        return self.q_client().get_board_members_quotes(board_symbol, count, sort_type, sort_order, fields)
+
+    def stock_board_top_members(self, board_symbol: str | CATEGORY = "881001", count: int = 20) -> list[dict]:
+        """获取板块活跃度最高的成分股。
+
+        Returns
+        -------
+        list[dict]
+        """
+        return self.q_client().top_board_members(board_symbol, count)
+
+    def stock_belong_board(self, market: MARKET, code: str) -> pd.DataFrame:
+        """查询个股所属板块。
+
+        Returns
+        -------
+        pd.DataFrame
+            包含所属板块信息的 DataFrame。
+        """
+        return self.q_client().get_symbol_belong_board(code, market)
+
+    def stock_capital_flow(self, market: MARKET, code: str) -> pd.DataFrame:
+        """获取个股资金流向（当日 + 5 日）。
+
+        Returns
+        -------
+        pd.DataFrame
+        """
+        return self.q_client().get_symbol_zjlx(code, market)
+
+    def stock_quotes_fields(
+        self,
+        code_list: list[tuple[MARKET, str]],
+        fields: Fields | None = None,
+    ) -> list[dict]:
+        """获取行情报价（支持自定义字段，MAC 协议）。
+
+        相比 :meth:`stock_quotes`，可自定义返回字段。
+
+        Parameters
+        ----------
+        code_list : list[tuple[MARKET, str]]
+            目标股票列表。
+        fields : Fields, optional
+            自定义字段组合，默认 PresetField.COMMON。
+
+        Returns
+        -------
+        list[dict]
+        """
+        return self.q_client().get_symbol_quotes(code_list, fields)
+
+    def stock_market_monitor(self, market: MARKET, start: int = 0, count: int = 10) -> list[dict]:
+        """获取主力监控数据（MAC 协议增强版）。
+
+        Parameters
+        ----------
+        market : MARKET
+            市场。
+        start : int
+            起始位置。
+        count : int
+            获取数量。
+
+        Returns
+        -------
+        list[dict]
+        """
+        return self.q_client().get_market_monitor(market, start, count)
+
+    # ================================================================
+    #  A股 — 多日分时 / K线偏移 / 个股特征 / 服务器信息
+    # ================================================================
+
+    def stock_tick_charts(
+        self, market: MARKET, code: str, query_date: date = None, days: int = 5,
+    ) -> dict:
+        """获取多日分时图（一次获取多天）。
+
+        Parameters
+        ----------
+        market : MARKET
+            市场。
+        code : str
+            股票代码。
+        query_date : date, optional
+            起始日期，None 为今天。
+        days : int
+            获取天数，默认 5。
+
+        Returns
+        -------
+        dict
+            - ``market`` : MARKET      市场
+            - ``code`` : str          股票代码
+            - ``name`` : str          股票名称
+            - ``pre_close`` : float   昨收
+            - ``open`` : float        开盘价
+            - ``high`` : float        最高价
+            - ``low`` : float         最低价
+            - ``close`` : float       现价
+            - ``vol`` : int           总量
+            - ``amount`` : float      成交额
+            - ``charts`` : list[dict]  每日分时 ``[{date, pre_close, ticks: [{minutes, price, avg, vol}]}]``
+        """
+        return self.q_client().get_multi_tick_charts(market, code, query_date, days)
+
+    def stock_kline_offset(self, offset: int = 0, count: int = 128000) -> dict:
+        """查询 K 线可用记录总数。
+
+        Returns
+        -------
+        dict
+            - ``total`` : int    可用记录总数
+            - ``returned`` : int 本次返回数
+        """
+        return self.q_client().get_kline_offset(offset, count)
+
+    def stock_symbol_info(self, market: MARKET, code: str) -> dict:
+        """获取个股简要特征（现价/涨跌/内外盘/换手/平均价等）。
+
+        Returns
+        -------
+        dict
+            - ``market`` : MARKET       市场
+            - ``code`` : str           股票代码
+            - ``name`` : str           股票名称
+            - ``time`` : datetime       行情时间
+            - ``pre_close`` : float     昨收
+            - ``open`` : float          开盘价
+            - ``high`` : float          最高价
+            - ``low`` : float           最低价
+            - ``close`` : float         现价
+            - ``vol`` : int             总量
+            - ``amount`` : float        成交额
+            - ``inside_volume`` : int   内盘
+            - ``outside_volume`` : int  外盘
+            - ``turnover`` : float      换手率
+            - ``avg`` : float           均价
+        """
+        return self.q_client().get_symbol_info(market, code)
+
+    def server_info(self) -> dict | None:
+        """获取服务器交易日时段和状态参数。
+
+        可用于判断当前是否在交易时段、获取上一交易日等信息。
+
+        Returns
+        -------
+        dict | None
+            - ``today`` : str             当前日期
+            - ``last_trading_day`` : str  上一交易日
+            - ``sessions_1`` : list       交易时段（开闭时间）
+            - ``sessions_2`` : list       交易时段 2
+            - ``market_param_1`` : int    市场参数 1
+            - ``market_param_2`` : int    市场参数 2
+        """
+        return self.q_client().get_server_info()
+
+    def download_file(self, filename: str, filesize: int = 0, report_hook=None) -> bytearray:
+        """MAC 协议下载服务器文件（如板块文件等）。
+
+        Parameters
+        ----------
+        filename : str
+            服务器文件名。
+        filesize : int
+            文件大小（0 表示自动获取）。
+        report_hook : callable, optional
+            进度回调 ``(downloaded, total)``。
+
+        Returns
+        -------
+        bytearray
+        """
+        return self.q_client().download_mac_file(filename, filesize, report_hook)
+
+    # ================================================================
     #  扩展市场 — 概况
     # ================================================================
 
@@ -588,6 +817,29 @@ class TdxClient:
             - ``name`` : str           商品名称
         """
         return self.eq_client().get_list(start, count)
+
+    def goods_varieties(self, market: int, start: int = 0, count: int = 600) -> list[dict]:
+        """获取扩展市场品种列表（MAC 协议，期货/期权合约品种）。
+
+        Parameters
+        ----------
+        market : int
+            市场代码。
+        start : int
+            起始位置。
+        count : int
+            获取数量，最大 1000。
+
+        Returns
+        -------
+        list[dict]
+            - ``name`` : str       品种名称
+            - ``category`` : int   分类
+            - ``index`` : int      索引
+            - ``switch`` : int     开关
+            - ``code`` : list      代码列表 ``[v1, v2, v3, c1, c2]``
+        """
+        return self.eq_client().get_goods_list(market, start, count)
 
     # ================================================================
     #  扩展市场 — 行情
