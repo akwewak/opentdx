@@ -11,8 +11,8 @@ class ExtendedClient(BaseClient):
     """扩展行情客户端 (港股/美股/期货)"""
 
     def __init__(self, multithread=False, heartbeat=False, auto_retry=False,
-                 raise_exception=False):
-        super().__init__(ex_hosts, 7727, multithread, heartbeat, auto_retry, raise_exception)
+                 raise_exception=False, nonblocking=False):
+        super().__init__(ex_hosts, 7727, multithread, heartbeat, auto_retry, raise_exception, nonblocking)
 
     def _do_heartbeat(self):
         return self.call(ex_quotation.HeartBeat())

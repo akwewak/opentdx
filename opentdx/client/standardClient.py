@@ -16,8 +16,8 @@ class StandardClient(BaseClient):
     """标准行情客户端 (A股)"""
 
     def __init__(self, multithread=False, heartbeat=False, auto_retry=False,
-                 raise_exception=False):
-        super().__init__(main_hosts, 7709, multithread, heartbeat, auto_retry, raise_exception)
+                 raise_exception=False, nonblocking=False):
+        super().__init__(main_hosts, 7709, multithread, heartbeat, auto_retry, raise_exception, nonblocking)
         self._decimal_map: dict[int, dict[str, int]] = {}
 
     def _load_decimal(self, market: MARKET):

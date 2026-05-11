@@ -4,13 +4,48 @@ import time
 import struct
 import zlib
 import functools
+import itertools
 from enum import Enum
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed, Future
 from opentdx.utils.log import log
 from opentdx.utils.heartbeat import HeartBeatThread
 
 CONNECT_TIMEOUT = 5.0
 RSP_HEADER_LEN = 0x10
+
+
+class ResponseDispatcher:
+    """响应分发器：维护 customize -> Future 的映射，reader 线程收到响应后唤醒对应 Future"""
+
+    def __init__(self):
+        self._pending: dict[int, Future] = {}
+        self._lock = threading.Lock()
+
+    def register(self, customize: int) -> Future:
+        future = Future()
+        with self._lock:
+            self._pending[customize] = future
+        return future
+
+    def resolve(self, customize: int, data: bytes):
+        with self._lock:
+            future = self._pending.pop(customize, None)
+        if future and not future.done():
+            future.set_result(data)
+
+    def reject(self, customize: int, exception: Exception):
+        with self._lock:
+            future = self._pending.pop(customize, None)
+        if future and not future.done():
+            future.set_exception(exception)
+
+    def reject_all(self, exception: Exception):
+        with self._lock:
+            pending = self._pending
+            self._pending = {}
+        for future in pending.values():
+            if not future.done():
+                future.set_exception(exception)
 
 
 def update_last_ack_time(func):
@@ -82,7 +117,8 @@ class DefaultRetryStrategy:
 class Transport:
     hosts = []
 
-    def __init__(self, multithread=False, heartbeat=False, auto_retry=False, raise_exception=False):
+    def __init__(self, multithread=False, heartbeat=False, auto_retry=False,
+                 raise_exception=False, nonblocking=False):
         self.client = None
         self.ip = None
         self.port = None
@@ -102,8 +138,49 @@ class Transport:
 
         self._heartbeat_callback = None
 
+        self.nonblocking = nonblocking
+        self._reader_thread = None
+        self._dispatcher = None
+        self._customize_counter = itertools.count(1)
+        self._customize_lock = threading.Lock()
+
     def set_heartbeat_callback(self, callback):
         self._heartbeat_callback = callback
+
+    def _next_customize(self) -> int:
+        with self._customize_lock:
+            return next(self._customize_counter)
+
+    def _reader_loop(self):
+        while not self._stop_event.is_set():
+            try:
+                self.client.settimeout(0.5)
+                head_buf = self.client.recv(RSP_HEADER_LEN)
+                if not head_buf:
+                    break
+                prefix, zipped, customize, unknown, msg_id, zipsize, unzip_size = \
+                    struct.unpack('<IBIBHHH', head_buf)
+                body = bytearray()
+                remaining = zipsize
+                while remaining > 0:
+                    chunk = self.client.recv(remaining)
+                    if not chunk:
+                        raise ConnectionError("connection closed while receiving body")
+                    body.extend(chunk)
+                    remaining -= len(chunk)
+                if zipsize != unzip_size:
+                    body = zlib.decompress(body)
+                self._dispatcher.resolve(customize, bytes(body))
+            except socket.timeout:
+                continue
+            except (OSError, ConnectionError, struct.error) as e:
+                if self._stop_event.is_set():
+                    break
+                log.warning("reader loop error: %s", e)
+                self._dispatcher.reject_all(e)
+                self.connected = False
+                break
+        log.debug("reader loop exited")
 
     def connect(self, ip=None, port=7709, time_out=5, bind_port=None, bind_ip='0.0.0.0'):
         if ip is None:
@@ -178,18 +255,33 @@ class Transport:
         log.debug("connected!")
         self.connected = True
 
+        if self.nonblocking:
+            self._dispatcher = ResponseDispatcher()
+            self._stop_event = threading.Event()
+            self._reader_thread = threading.Thread(target=self._reader_loop, daemon=True)
+            self._reader_thread.start()
+
         if self.heartbeat and self._heartbeat_callback and \
                 not (self.heartbeat_thread and self.heartbeat_thread.is_alive()):
-            self._stop_event = threading.Event()
+            if self._stop_event is None:
+                self._stop_event = threading.Event()
             self.heartbeat_thread = HeartBeatThread(self.client, self._stop_event, self._heartbeat_callback)
             self.heartbeat_thread.daemon = True
             self.heartbeat_thread.start()
         return self
 
     def disconnect(self):
-        if self.heartbeat_thread and self.heartbeat_thread.is_alive():
+        if self._stop_event:
             self._stop_event.set()
+
+        if self.heartbeat_thread and self.heartbeat_thread.is_alive():
+            self.heartbeat_thread.join(timeout=2)
         self.heartbeat_thread = None
+
+        if self._reader_thread and self._reader_thread.is_alive():
+            self._reader_thread.join(timeout=2)
+        self._reader_thread = None
+        self._dispatcher = None
         self._stop_event = None
 
         if self.client:
@@ -219,13 +311,38 @@ class Transport:
                 raise Exception("not connected")
             return None
 
+        if self.nonblocking:
+            return self._send_async(data)
+        else:
+            return self._send_sync(data)
+
+    def _send_async(self, data):
+        cid = self._next_customize()
+        data = bytearray(data)
+        struct.pack_into('<I', data, 1, cid)
+
+        future = self._dispatcher.register(cid)
         try:
-            zipped, customize, control, zipsize, unzip_size, msg_id = struct.unpack('<BIBHHH', data[:12])
+            sent = self.client.send(data)
+            if sent != len(data):
+                self._dispatcher.reject(cid, Exception("send data error"))
+                return None
+        except Exception as e:
+            self._dispatcher.reject(cid, e)
+            self.connected = False
+            if self.raise_exception:
+                raise
+            return None
+        return future
+
+    def _send_sync(self, data):
+        try:
             send_data = self.client.send(data)
             if send_data != len(data):
                 log.debug("send data error")
                 if self.raise_exception:
                     raise Exception("send data error")
+                return None
             else:
                 head_buf = self.client.recv(RSP_HEADER_LEN)
                 prefix, zipped, customize, unknown, msg_id, zipsize, unzip_size = struct.unpack('<IBIBHHH', head_buf)

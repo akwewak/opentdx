@@ -1,3 +1,5 @@
+from concurrent.futures import Future
+
 from .transport import Transport
 
 
@@ -5,8 +7,8 @@ class BaseClient:
     """基础客户端，持有 Transport 实例并提供通用基础设施"""
 
     def __init__(self, hosts, port=7709, multithread=False, heartbeat=False,
-                 auto_retry=False, raise_exception=False):
-        self._t = Transport(multithread, heartbeat, auto_retry, raise_exception)
+                 auto_retry=False, raise_exception=False, nonblocking=False):
+        self._t = Transport(multithread, heartbeat, auto_retry, raise_exception, nonblocking)
         self._t.hosts = hosts
         self._port = port
 
@@ -62,10 +64,17 @@ class BaseClient:
     def disconnect(self):
         return self._t.disconnect()
 
-    def call(self, parser):
+    def call(self, parser, timeout=None):
         resp = self._t.send(parser.serialize())
         if resp is None:
             return None
+        if isinstance(resp, Future):
+            try:
+                resp = resp.result(timeout=timeout)
+            except Exception:
+                if self.raise_exception:
+                    raise
+                return None
         return parser.deserialize(resp)
 
     def _download_file_impl(self, fetch_cls, filename: str, filesize=0, report_hook=None):
