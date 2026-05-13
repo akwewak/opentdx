@@ -2,6 +2,19 @@
 
 所有值得关注的变化均记录于此。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
+## [Unreleased]
+
+### Added
+
+- **Bitmap 新增字段**：`BID_ASK_RATIO` (0x39) 委比，`BID_ASK_DIFF` (0x8C) 委差，`BID3_VOLUME` (0x86) 买三量，`BID4_VOLUME` (0x87) 买四量，`ASK3_VOLUME` (0x89) 卖三量，`ASK4_VOLUME` (0x8A) 卖四量
+
+### Changed
+
+- **Bitmap 字段更新**：`UNKNOWN_36_AMOUNT_RELATED` (0x2A) 重命名为 `OPERATING_REVENUE`（营业收入），新增 `TODAY_INDICATOR` (0x7D) 近日指标提示字段
+- **Bitmap 字段注释**：`UP_COUNT` (0x88)、`DOWN_COUNT` (0x8B)、`LIMIT_UP_COUNT` (0x5D)、`LIMIT_DOWN_COUNT` (0x5E) 添加股票中实际含义说明（买五量/卖五量/买二量/卖二量）
+
+---
+
 ## [0.2.3] - 2026-05-10
 
 ### Added
