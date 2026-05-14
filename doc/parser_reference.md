@@ -281,6 +281,7 @@
 | 0x6B | main_net_amount_copy | `<f` | 今日主力净流入(副本) |
 | 0x6F | main_net_3d_amount | `<f` | 近三日主力净额 |
 | 0x70 | main_net_5d_amount | `<f` | 近五日主力净额 |
+| 0x71 | main_net_10d_amount | `<f` | 近十日主力净额 |
 | 0x72 | main_buy_net_amount | `<f` | 今日主买净额 |
 | 0x7A | auction_vol_ratio | `<f` | 竞价量比 |
 | 0x7D | recent_indicator | `<f` | 近日指标提示(6:KDJ死叉, 92:阶段放量等) |
