@@ -126,6 +126,8 @@ class FieldBit(IntEnum):
     # 0x6C-0x6E 待识别
     MAIN_NET_3D_AMOUNT     = 0x6F, '<f', '近三日主力净额'
     MAIN_NET_5D_AMOUNT     = 0x70, '<f', '近五日主力净额'
+    # 0x71 待识别
+    MAIN_BUY_NET_AMOUNT    = 0x72, '<f', '今日主买净额'
 
     # ── 0x70-0x8F ──
     AUCTION_VOL_RATIO      = 0x7A, '<f', '竞价量比'
